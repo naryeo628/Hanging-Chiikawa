@@ -21,29 +21,41 @@
 
 ## 📦 설치
 
-아직 배포된 DMG는 없어서 직접 빌드해요. (macOS, Node.js 필요)
+[Releases](../../releases)에서 운영체제에 맞는 파일을 받아요.
+
+| 파일 | 대상 |
+| --- | --- |
+| `HangingPet-x.x.x-arm64.dmg` | macOS (Apple Silicon) |
+| `HangingPet-x.x.x.dmg` | macOS (Intel) |
+| `HangingPet.Setup.x.x.x.exe` | Windows 설치 파일 |
+| `HangingPet.x.x.x.exe` | Windows 설치 없이 실행 (portable) |
+
+**macOS**
+
+1. DMG를 열고 `HangingPet.app`을 `Applications`로 드래그해요.
+2. 처음 실행 시 "확인되지 않은 개발자" 경고가 뜨면, 앱 아이콘을 **우클릭 → 열기**로 실행하면 돼요.
+3. 메뉴바의 🐾를 눌러 **로그인 시 자동 실행**을 켜면 부팅할 때 자동으로 떠요.
+
+**Windows**
+
+서명하지 않은 빌드라 처음 실행할 때 SmartScreen 경고가 뜰 수 있어요 (**추가 정보 → 실행**).
+작업 표시줄 트레이의 발자국 아이콘에서 설정을 열 수 있어요. (Windows에서는 아직 직접 테스트하지 못했어요.)
+
+## 🛠️ 직접 빌드하기
+
+macOS와 Node.js가 필요해요.
 
 ```bash
 git clone https://github.com/naryeo628/Hanging-Chiikawa.git
 cd Hanging-Chiikawa
 git checkout develop
 npm install
-npm run dist
+
+npm run dist       # macOS DMG
+npm run dist:win   # Windows exe
 ```
 
-1. `release/` 폴더의 DMG를 열고 `HangingPet.app`을 `Applications`로 드래그해요.
-2. 처음 실행 시 "확인되지 않은 개발자" 경고가 뜨면, 앱 아이콘을 **우클릭 → 열기**로 실행하면 돼요.
-3. 메뉴바의 🐾를 눌러 **로그인 시 자동 실행**을 켜면 부팅할 때 자동으로 떠요.
-
-### Windows
-
-```bash
-npm run dist:win
-```
-
-`release/`에 설치용 `HangingPet Setup x.x.x.exe`와 설치 없이 실행하는 `HangingPet x.x.x.exe`(portable)가 만들어져요.
-서명하지 않은 빌드라 처음 실행할 때 SmartScreen 경고가 뜰 수 있어요 (**추가 정보 → 실행**).
-Windows에서는 작업 표시줄 오른쪽 아래 트레이의 발자국 아이콘에서 설정을 열 수 있어요. (Windows에서는 아직 직접 테스트하지 못했어요.)
+결과물은 `release/` 폴더에 만들어져요. 개발 모드로 실행하려면 `npm start`예요.
 
 ## 🚀 처음 사용하기
 
@@ -52,13 +64,6 @@ Windows에서는 작업 표시줄 오른쪽 아래 트레이의 발자국 아이
 1. 메뉴바 🐾 (Windows는 트레이 아이콘) → **설정 열기**
 2. **캐릭터** 항목에서 **이미지 추가…**로 이미지를 골라요 (여러 장 가능).
 3. **배치** 항목에서 시작 위치, 줄 길이, 캐릭터 간격을 조절해요.
-
-## 🛠️ 개발 모드로 실행
-
-```bash
-npm install
-npm start
-```
 
 ## 🧩 동작 방식
 
