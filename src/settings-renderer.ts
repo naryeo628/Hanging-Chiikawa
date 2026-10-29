@@ -9,41 +9,106 @@
     return el as T;
   }
 
+  const clickThroughEl = byId<HTMLInputElement>('clickThrough');
   const dragEnabledEl = byId<HTMLInputElement>('dragEnabled');
   const reactionsEnabledEl = byId<HTMLInputElement>('reactionsEnabled');
   const autoWalkEnabledEl = byId<HTMLInputElement>('autoWalkEnabled');
+  const pinSectionEl = byId<HTMLElement>('pinSection');
+  // 표시 위치(창 레벨) 옵션은 macOS에서만 의미가 있다.
+  pinSectionEl.hidden = !navigator.userAgent.includes('Mac');
   const pinModeDesktopEl = byId<HTMLInputElement>('pinModeDesktop');
   const pinModeTopEl = byId<HTMLInputElement>('pinModeTop');
+  const rowStartPercentEl = byId<HTMLInputElement>('rowStartPercent');
+  const rowStartPercentValueEl = byId<HTMLElement>('rowStartPercentValue');
+  const stringLengthEl = byId<HTMLInputElement>('stringLength');
+  const stringLengthValueEl = byId<HTMLElement>('stringLengthValue');
+  const rowSpacingEl = byId<HTMLInputElement>('rowSpacing');
+  const rowSpacingValueEl = byId<HTMLElement>('rowSpacingValue');
 
-  const characterEls: Record<CharacterId, HTMLInputElement> = {
-    chiikawa: byId<HTMLInputElement>('char-chiikawa'),
-    hachiware: byId<HTMLInputElement>('char-hachiware'),
-    usagi: byId<HTMLInputElement>('char-usagi'),
-    momonga: byId<HTMLInputElement>('char-momonga'),
-  };
+  const characterListEl = byId<HTMLElement>('characterList');
+  const characterEmptyEl = byId<HTMLElement>('characterEmpty');
+  const addCharacterEl = byId<HTMLButtonElement>('addCharacter');
 
   let applyingRemoteUpdate = false;
 
+  function renderCharacters(characters: CharacterEntry[]): void {
+    characterListEl.replaceChildren();
+    characterEmptyEl.style.display = characters.length === 0 ? '' : 'none';
+    characters.forEach((entry, index) => {
+      const row = document.createElement('div');
+      row.className = 'character-row';
+
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = entry.visible;
+      checkbox.addEventListener('change', () => {
+        window.settingsAPI.setCharacterVisible(entry.id, checkbox.checked);
+      });
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = entry.name;
+      label.append(checkbox, name);
+
+      const replace = document.createElement('button');
+      replace.textContent = '이미지 교체';
+      replace.addEventListener('click', () => {
+        window.settingsAPI.replaceCharacterImage(entry.id);
+      });
+
+      const remove = document.createElement('button');
+      remove.textContent = '삭제';
+      remove.addEventListener('click', () => {
+        window.settingsAPI.removeCharacter(entry.id);
+      });
+
+      const up = document.createElement('button');
+      up.textContent = '↑';
+      up.disabled = index === 0;
+      up.addEventListener('click', () => {
+        window.settingsAPI.moveCharacter(entry.id, -1);
+      });
+
+      const down = document.createElement('button');
+      down.textContent = '↓';
+      down.disabled = index === characters.length - 1;
+      down.addEventListener('click', () => {
+        window.settingsAPI.moveCharacter(entry.id, 1);
+      });
+
+      row.append(label, up, down, replace, remove);
+      characterListEl.append(row);
+    });
+  }
+
   function applySettings(settings: AppSettings): void {
     applyingRemoteUpdate = true;
+    clickThroughEl.checked = settings.clickThrough;
     dragEnabledEl.checked = settings.dragEnabled;
     reactionsEnabledEl.checked = settings.reactionsEnabled;
     autoWalkEnabledEl.checked = settings.autoWalkEnabled;
     pinModeDesktopEl.checked = settings.pinMode === 'desktop';
     pinModeTopEl.checked = settings.pinMode === 'top';
-    for (const id of Object.keys(characterEls) as CharacterId[]) {
-      characterEls[id].checked = settings.characters[id];
-    }
+    rowStartPercentEl.value = String(settings.rowStartPercent);
+    rowStartPercentValueEl.textContent = String(settings.rowStartPercent);
+    stringLengthEl.value = String(settings.stringLength);
+    stringLengthValueEl.textContent = String(settings.stringLength);
+    rowSpacingEl.value = String(settings.rowSpacing);
+    rowSpacingValueEl.textContent = String(settings.rowSpacing);
+    renderCharacters(settings.characters);
     applyingRemoteUpdate = false;
   }
 
-  function sendUpdate(partial: Partial<AppSettings>): void {
+  function sendUpdate(partial: Partial<Omit<AppSettings, 'characters'>>): void {
     if (applyingRemoteUpdate) {
       return;
     }
     window.settingsAPI.updateSettings(partial);
   }
 
+  clickThroughEl.addEventListener('change', () => {
+    sendUpdate({ clickThrough: clickThroughEl.checked });
+  });
   dragEnabledEl.addEventListener('change', () => {
     sendUpdate({ dragEnabled: dragEnabledEl.checked });
   });
@@ -63,11 +128,21 @@
       sendUpdate({ pinMode: 'top' });
     }
   });
-  for (const id of Object.keys(characterEls) as CharacterId[]) {
-    characterEls[id].addEventListener('change', () => {
-      sendUpdate({ characters: { [id]: characterEls[id].checked } as Record<CharacterId, boolean> });
-    });
-  }
+  rowStartPercentEl.addEventListener('input', () => {
+    rowStartPercentValueEl.textContent = rowStartPercentEl.value;
+    sendUpdate({ rowStartPercent: Number(rowStartPercentEl.value) });
+  });
+  stringLengthEl.addEventListener('input', () => {
+    stringLengthValueEl.textContent = stringLengthEl.value;
+    sendUpdate({ stringLength: Number(stringLengthEl.value) });
+  });
+  rowSpacingEl.addEventListener('input', () => {
+    rowSpacingValueEl.textContent = rowSpacingEl.value;
+    sendUpdate({ rowSpacing: Number(rowSpacingEl.value) });
+  });
+  addCharacterEl.addEventListener('click', () => {
+    window.settingsAPI.addCharacters();
+  });
 
   window.settingsAPI.onSettingsChanged(applySettings);
   window.settingsAPI.getSettings().then(applySettings);

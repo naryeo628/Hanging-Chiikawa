@@ -6,7 +6,9 @@ import {
   nativeImage,
   screen,
   ipcMain,
+  dialog,
 } from 'electron';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -16,16 +18,41 @@ const DEFAULT_SETTINGS: AppSettings = {
   dragEnabled: true,
   reactionsEnabled: true,
   autoWalkEnabled: true,
+  clickThrough: true,
   pinMode: process.env.PIN_MODE === 'top' ? 'top' : 'desktop',
-  characters: {
-    chiikawa: true,
-    hachiware: true,
-    usagi: true,
-    momonga: true,
-  },
+  rowStartPercent: 10,
+  rowSpacing: 80,
+  stringLength: 60,
+  characters: [],
 };
 
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+const charactersDir = path.join(app.getPath('userData'), 'characters');
+
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
+
+function sanitizeCharacters(value: unknown): CharacterEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(
+    (entry): entry is CharacterEntry =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      typeof entry.id === 'string' &&
+      typeof entry.name === 'string' &&
+      typeof entry.visible === 'boolean' &&
+      typeof entry.file === 'string' &&
+      entry.file === path.basename(entry.file) &&
+      path.extname(entry.file).toLowerCase() in IMAGE_MIME,
+  );
+}
 
 function loadSettings(): AppSettings {
   try {
@@ -34,7 +61,7 @@ function loadSettings(): AppSettings {
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
-      characters: { ...DEFAULT_SETTINGS.characters, ...parsed.characters },
+      characters: sanitizeCharacters(parsed.characters),
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -59,6 +86,11 @@ function applyWindowLevel(): void {
   if (!mainWindow) {
     return;
   }
+  if (process.platform !== 'darwin') {
+    // 창 레벨 구분은 macOS에서만 동작하므로 다른 OS에서는 항상 위에 둔다.
+    mainWindow.setAlwaysOnTop(true);
+    return;
+  }
   const level = (settings.pinMode === 'top' ? 'floating' : 'desktop') as AlwaysOnTopLevel;
   mainWindow.setAlwaysOnTop(true, level);
 }
@@ -68,12 +100,18 @@ function broadcastSettings(): void {
   settingsWindow?.webContents.send('settings-changed', settings);
 }
 
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+}
+
 function updateSettings(partial: Partial<AppSettings>): void {
   settings = {
     ...settings,
     ...partial,
-    characters: { ...settings.characters, ...(partial.characters ?? {}) },
   };
+  settings.rowStartPercent = clampNumber(settings.rowStartPercent, 0, 90, DEFAULT_SETTINGS.rowStartPercent);
+  settings.rowSpacing = clampNumber(settings.rowSpacing, 20, 300, DEFAULT_SETTINGS.rowSpacing);
+  settings.stringLength = clampNumber(settings.stringLength, 20, 300, DEFAULT_SETTINGS.stringLength);
   saveSettings(settings);
   applyWindowLevel();
   broadcastSettings();
@@ -121,6 +159,15 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  const fitWindowToDisplay = (): void => {
+    const { x: wx, y: wy, width: ww } = screen.getPrimaryDisplay().workArea;
+    mainWindow?.setBounds({ x: wx, y: wy, width: ww, height: windowHeight });
+  };
+  fitWindowToDisplay();
+  screen.on('display-metrics-changed', fitWindowToDisplay);
+  screen.on('display-added', fitWindowToDisplay);
+  screen.on('display-removed', fitWindowToDisplay);
 }
 
 function createSettingsWindow(): void {
@@ -132,7 +179,7 @@ function createSettingsWindow(): void {
 
   settingsWindow = new BrowserWindow({
     width: 380,
-    height: 560,
+    height: 720,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -159,13 +206,12 @@ function createSettingsWindow(): void {
 }
 
 function buildTrayIcon(): Electron.NativeImage {
-  const iconPath = path.join(__dirname, '..', 'assets', 'trayTemplate.png');
-  if (fs.existsSync(iconPath)) {
-    const image = nativeImage.createFromPath(iconPath);
-    image.setTemplateImage(true);
-    return image;
+  // macOS는 🐾 글자로 표시하므로 이미지를 쓰지 않는다.
+  if (process.platform === 'darwin') {
+    return nativeImage.createEmpty();
   }
-  return nativeImage.createEmpty();
+  const iconPath = path.join(__dirname, '..', 'assets', 'trayIcon.png');
+  return fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
 }
 
 function buildTrayMenu(): Menu {
@@ -182,6 +228,7 @@ function buildTrayMenu(): Menu {
     { type: 'separator' },
     {
       label: pinLabel,
+      visible: process.platform === 'darwin',
       click: () => {
         updateSettings({ pinMode: settings.pinMode === 'top' ? 'desktop' : 'top' });
       },
@@ -235,7 +282,127 @@ ipcMain.on('update-settings', (_event, partial: unknown) => {
   if (typeof partial !== 'object' || partial === null) {
     return;
   }
-  updateSettings(partial as Partial<AppSettings>);
+  const { characters: _ignored, ...rest } = partial as Partial<AppSettings>;
+  updateSettings(rest);
+});
+
+ipcMain.handle('add-characters', async () => {
+  const options: Electron.OpenDialogOptions = {
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+  };
+  const result = settingsWindow
+    ? await dialog.showOpenDialog(settingsWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled) {
+    return;
+  }
+  fs.mkdirSync(charactersDir, { recursive: true });
+  const added: CharacterEntry[] = [];
+  for (const source of result.filePaths) {
+    const ext = path.extname(source).toLowerCase();
+    if (!(ext in IMAGE_MIME)) {
+      continue;
+    }
+    const id = crypto.randomUUID();
+    const file = id + ext;
+    try {
+      fs.copyFileSync(source, path.join(charactersDir, file));
+    } catch {
+      continue;
+    }
+    added.push({ id, name: path.basename(source, path.extname(source)), file, visible: true });
+  }
+  if (added.length > 0) {
+    updateSettings({ characters: [...settings.characters, ...added] });
+  }
+});
+
+ipcMain.handle('replace-character-image', async (_event, id: unknown) => {
+  const target = settings.characters.find((entry) => entry.id === id);
+  if (!target) {
+    return;
+  }
+  const options: Electron.OpenDialogOptions = {
+    properties: ['openFile'],
+    filters: [{ name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+  };
+  const result = settingsWindow
+    ? await dialog.showOpenDialog(settingsWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled || result.filePaths.length === 0) {
+    return;
+  }
+  const source = result.filePaths[0];
+  const ext = path.extname(source).toLowerCase();
+  if (!(ext in IMAGE_MIME)) {
+    return;
+  }
+  const file = crypto.randomUUID() + ext;
+  fs.mkdirSync(charactersDir, { recursive: true });
+  try {
+    fs.copyFileSync(source, path.join(charactersDir, file));
+  } catch {
+    return;
+  }
+  try {
+    fs.unlinkSync(path.join(charactersDir, target.file));
+  } catch {
+    // 이전 파일이 이미 없어도 교체는 계속한다.
+  }
+  updateSettings({
+    characters: settings.characters.map((entry) => (entry.id === target.id ? { ...entry, file } : entry)),
+  });
+});
+
+ipcMain.on('remove-character', (_event, id: unknown) => {
+  const target = settings.characters.find((entry) => entry.id === id);
+  if (!target) {
+    return;
+  }
+  try {
+    fs.unlinkSync(path.join(charactersDir, target.file));
+  } catch {
+    // 파일이 이미 없어도 목록에서는 제거한다.
+  }
+  updateSettings({ characters: settings.characters.filter((entry) => entry.id !== id) });
+});
+
+ipcMain.on('move-character', (_event, id: unknown, offset: unknown) => {
+  if (offset !== -1 && offset !== 1) {
+    return;
+  }
+  const from = settings.characters.findIndex((entry) => entry.id === id);
+  const to = from + offset;
+  if (from < 0 || to < 0 || to >= settings.characters.length) {
+    return;
+  }
+  const next = [...settings.characters];
+  [next[from], next[to]] = [next[to], next[from]];
+  updateSettings({ characters: next });
+});
+
+ipcMain.on('set-character-visible', (_event, id: unknown, visible: unknown) => {
+  if (typeof visible !== 'boolean') {
+    return;
+  }
+  updateSettings({
+    characters: settings.characters.map((entry) => (entry.id === id ? { ...entry, visible } : entry)),
+  });
+});
+
+ipcMain.handle('get-character-image', (_event, id: unknown): string | null => {
+  const target = settings.characters.find((entry) => entry.id === id);
+  if (!target) {
+    return null;
+  }
+  try {
+    const data = fs.readFileSync(path.join(charactersDir, target.file));
+    const mime = IMAGE_MIME[path.extname(target.file).toLowerCase()];
+    return `data:${mime};base64,${data.toString('base64')}`;
+  } catch {
+    return null;
+  }
 });
 
 app.whenReady().then(() => {

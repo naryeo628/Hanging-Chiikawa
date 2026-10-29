@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "npm run build && electron .",
     "start:top": "npm run build && PIN_MODE=top electron .",
-    "dist": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac"
+    "dist": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+    "dist:win": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -23,7 +24,8 @@
       "dist/**/*",
       "index.html",
       "settings.html",
-      "assets/**/*"
+      "assets/**/*",
+      "!assets/characters/**/*"
     ],
     "directories": {
       "output": "release"
@@ -39,6 +41,22 @@
         }
       ],
       "category": "public.app-category.utilities"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     }
   }
 }
