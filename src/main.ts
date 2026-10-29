@@ -313,6 +313,43 @@ ipcMain.handle('add-characters', async () => {
   }
 });
 
+ipcMain.handle('replace-character-image', async (_event, id: unknown) => {
+  const target = settings.characters.find((entry) => entry.id === id);
+  if (!target) {
+    return;
+  }
+  const options: Electron.OpenDialogOptions = {
+    properties: ['openFile'],
+    filters: [{ name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+  };
+  const result = settingsWindow
+    ? await dialog.showOpenDialog(settingsWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled || result.filePaths.length === 0) {
+    return;
+  }
+  const source = result.filePaths[0];
+  const ext = path.extname(source).toLowerCase();
+  if (!(ext in IMAGE_MIME)) {
+    return;
+  }
+  const file = crypto.randomUUID() + ext;
+  fs.mkdirSync(charactersDir, { recursive: true });
+  try {
+    fs.copyFileSync(source, path.join(charactersDir, file));
+  } catch {
+    return;
+  }
+  try {
+    fs.unlinkSync(path.join(charactersDir, target.file));
+  } catch {
+    // 이전 파일이 이미 없어도 교체는 계속한다.
+  }
+  updateSettings({
+    characters: settings.characters.map((entry) => (entry.id === target.id ? { ...entry, file } : entry)),
+  });
+});
+
 ipcMain.on('remove-character', (_event, id: unknown) => {
   const target = settings.characters.find((entry) => entry.id === id);
   if (!target) {

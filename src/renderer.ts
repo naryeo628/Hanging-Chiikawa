@@ -240,7 +240,11 @@
     pets = settings.characters.map((entry) => {
       const pet = existing.get(entry.id);
       if (pet) {
+        const imageChanged = pet.entry.file !== entry.file;
         pet.entry = entry;
+        if (imageChanged) {
+          loadSprite(pet);
+        }
         return pet;
       }
       return createPet(entry);

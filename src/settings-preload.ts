@@ -10,6 +10,9 @@ const settingsAPI: SettingsAPI = {
   addCharacters(): Promise<void> {
     return ipcRenderer.invoke('add-characters');
   },
+  replaceCharacterImage(id: string): Promise<void> {
+    return ipcRenderer.invoke('replace-character-image', id);
+  },
   removeCharacter(id: string): void {
     ipcRenderer.send('remove-character', id);
   },

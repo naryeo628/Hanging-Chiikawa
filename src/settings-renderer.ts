@@ -47,6 +47,12 @@
       name.textContent = entry.name;
       label.append(checkbox, name);
 
+      const replace = document.createElement('button');
+      replace.textContent = '이미지 교체';
+      replace.addEventListener('click', () => {
+        window.settingsAPI.replaceCharacterImage(entry.id);
+      });
+
       const remove = document.createElement('button');
       remove.textContent = '삭제';
       remove.addEventListener('click', () => {
@@ -67,7 +73,7 @@
         window.settingsAPI.moveCharacter(entry.id, 1);
       });
 
-      row.append(label, up, down, remove);
+      row.append(label, up, down, replace, remove);
       characterListEl.append(row);
     });
   }

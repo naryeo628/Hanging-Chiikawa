@@ -29,6 +29,7 @@ interface SettingsAPI {
   getSettings(): Promise<AppSettings>;
   updateSettings(partial: Partial<Omit<AppSettings, 'characters'>>): void;
   addCharacters(): Promise<void>;
+  replaceCharacterImage(id: string): Promise<void>;
   removeCharacter(id: string): void;
   moveCharacter(id: string, offset: -1 | 1): void;
   setCharacterVisible(id: string, visible: boolean): void;
