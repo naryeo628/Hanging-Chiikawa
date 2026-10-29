@@ -1,12 +1,10 @@
 (function (): void {
   'use strict';
 
-  const CHARACTER_CONFIGS: CharacterConfig[] = [
-    { id: 'chiikawa', image: 'assets/characters/chiikawa.png', size: 50 },
-    { id: 'hachiware', image: 'assets/characters/hachiware.png', size: 50 },
-    { id: 'usagi', image: 'assets/characters/usagi.png', size: 50 },
-    { id: 'momonga', image: 'assets/characters/momonga.png', size: 50 },
-  ];
+  const PET_SIZE = 50;
+  const SPRITE_MAX_SIDE = 256;
+  const BACKGROUND_WHITE_THRESHOLD = 235;
+  const BACKGROUND_ALPHA_THRESHOLD = 10;
 
   const AREA_SIDE_MARGIN = 30;
 
@@ -41,13 +39,12 @@
     rowStartPercent: 10,
     rowSpacing: 80,
     stringLength: 60,
-    characters: { chiikawa: true, hachiware: true, usagi: true, momonga: true },
+    characters: [],
   };
 
   interface Pet {
-    config: CharacterConfig;
-    image: HTMLImageElement;
-    imageLoaded: boolean;
+    entry: CharacterEntry;
+    sprite: HTMLCanvasElement | null;
     anchorX: number;
     stringJitter: number;
     angle: number;
@@ -101,24 +98,122 @@
   }
 
   function isVisible(pet: Pet): boolean {
-    return settings.characters[pet.config.id];
+    return pet.entry.visible;
   }
 
-  function anchorXFor(index: number): number {
-    const margin = AREA_SIDE_MARGIN + CHARACTER_CONFIGS[0].size / 2;
-    const gaps = Math.max(CHARACTER_CONFIGS.length - 1, 1);
+  function anchorXFor(index: number, count: number): number {
+    const margin = AREA_SIDE_MARGIN + PET_SIZE / 2;
+    const gaps = Math.max(count - 1, 1);
     const spacing = Math.min(settings.rowSpacing, Math.max((windowWidth - margin * 2) / gaps, 0));
     const start = clamp(windowWidth * (settings.rowStartPercent / 100), margin, windowWidth - margin - spacing * gaps);
     return start + index * spacing;
   }
 
-  function createPet(config: CharacterConfig, index: number): Pet {
-    const img = new Image();
+  function buildSprite(img: HTMLImageElement): HTMLCanvasElement {
+    const scale = Math.min(1, SPRITE_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+    const width = Math.max(1, Math.round(img.naturalWidth * scale));
+    const height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const work = document.createElement('canvas');
+    work.width = width;
+    work.height = height;
+    const workContext = work.getContext('2d', { willReadFrequently: true });
+    if (!workContext) {
+      return work;
+    }
+    workContext.drawImage(img, 0, 0, width, height);
+    const imageData = workContext.getImageData(0, 0, width, height);
+    const px = imageData.data;
+
+    const isBackground = (p: number): boolean => {
+      const i = p * 4;
+      return (
+        px[i + 3] < BACKGROUND_ALPHA_THRESHOLD ||
+        (px[i] >= BACKGROUND_WHITE_THRESHOLD && px[i + 1] >= BACKGROUND_WHITE_THRESHOLD && px[i + 2] >= BACKGROUND_WHITE_THRESHOLD)
+      );
+    };
+
+    // 가장자리에서 이어진 흰색/투명 영역만 배경으로 보고 지운다(캐릭터 안쪽 흰색은 유지).
+    const visited = new Uint8Array(width * height);
+    const stack: number[] = [];
+    const visit = (x: number, y: number): void => {
+      if (x < 0 || y < 0 || x >= width || y >= height) {
+        return;
+      }
+      const p = y * width + x;
+      if (visited[p] || !isBackground(p)) {
+        return;
+      }
+      visited[p] = 1;
+      stack.push(p);
+    };
+    for (let x = 0; x < width; x++) {
+      visit(x, 0);
+      visit(x, height - 1);
+    }
+    for (let y = 0; y < height; y++) {
+      visit(0, y);
+      visit(width - 1, y);
+    }
+    while (stack.length > 0) {
+      const p = stack.pop() as number;
+      px[p * 4 + 3] = 0;
+      const x = p % width;
+      const y = (p - x) / width;
+      visit(x + 1, y);
+      visit(x - 1, y);
+      visit(x, y + 1);
+      visit(x, y - 1);
+    }
+    workContext.putImageData(imageData, 0, 0);
+
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (px[(y * width + x) * 4 + 3] > 0) {
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+    if (maxX < 0) {
+      return work;
+    }
+    const cropWidth = maxX - minX + 1;
+    const cropHeight = maxY - minY + 1;
+    const side = Math.max(cropWidth, cropHeight);
+    const out = document.createElement('canvas');
+    out.width = side;
+    out.height = side;
+    const outContext = out.getContext('2d');
+    if (outContext) {
+      outContext.drawImage(work, minX, minY, cropWidth, cropHeight, (side - cropWidth) / 2, (side - cropHeight) / 2, cropWidth, cropHeight);
+    }
+    return out;
+  }
+
+  function loadSprite(pet: Pet): void {
+    window.petAPI.getCharacterImage(pet.entry.id).then((url) => {
+      if (!url) {
+        return;
+      }
+      const img = new Image();
+      img.onload = (): void => {
+        pet.sprite = buildSprite(img);
+      };
+      img.src = url;
+    });
+  }
+
+  function createPet(entry: CharacterEntry): Pet {
     const pet: Pet = {
-      config,
-      image: img,
-      imageLoaded: false,
-      anchorX: anchorXFor(index),
+      entry,
+      sprite: null,
+      anchorX: 0,
       stringJitter: randomRange(-STRING_LENGTH_JITTER, STRING_LENGTH_JITTER),
       angle: 0,
       velocity: 0,
@@ -130,19 +225,29 @@
       pointerDownY: 0,
       pointerMoved: false,
     };
-    img.onload = (): void => {
-      pet.imageLoaded = true;
-    };
-    img.onerror = (): void => {
-      pet.imageLoaded = false;
-    };
-    img.src = config.image;
+    loadSprite(pet);
     return pet;
   }
 
+  function syncPets(): void {
+    const existing = new Map(pets.map((pet) => [pet.entry.id, pet]));
+    pets = settings.characters.map((entry) => {
+      const pet = existing.get(entry.id);
+      if (pet) {
+        pet.entry = entry;
+        return pet;
+      }
+      return createPet(entry);
+    });
+    if (activeDragPet && !pets.includes(activeDragPet)) {
+      activeDragPet = null;
+    }
+  }
+
   function layoutPets(): void {
-    pets.forEach((pet, index) => {
-      pet.anchorX = anchorXFor(index);
+    const visible = pets.filter(isVisible);
+    visible.forEach((pet, index) => {
+      pet.anchorX = anchorXFor(index, visible.length);
     });
   }
 
@@ -163,7 +268,7 @@
   }
 
   function petCenter(pet: Pet): { x: number; y: number } {
-    const distance = stringLengthOf(pet) + pet.config.size / 2;
+    const distance = stringLengthOf(pet) + PET_SIZE / 2;
     return {
       x: pet.anchorX - distance * Math.sin(pet.angle),
       y: distance * Math.cos(pet.angle),
@@ -177,7 +282,7 @@
     const center = petCenter(pet);
     const dx = x - center.x;
     const dy = y - center.y;
-    return Math.sqrt(dx * dx + dy * dy) <= (pet.config.size / 2) * reach;
+    return Math.sqrt(dx * dx + dy * dy) <= (PET_SIZE / 2) * reach;
   }
 
   function findPetAt(x: number, y: number): Pet | null {
@@ -194,7 +299,7 @@
   }
 
   function dragTo(pet: Pet, x: number, y: number): void {
-    const distance = stringLengthOf(pet) + pet.config.size / 2;
+    const distance = stringLengthOf(pet) + PET_SIZE / 2;
     const dx = pet.anchorX - x;
     const dy = Math.max(y, distance * 0.3);
     pet.angle = clamp(Math.atan2(dx, dy), -MAX_ANGLE, MAX_ANGLE);
@@ -280,7 +385,7 @@
   }
 
   function drawPlaceholder(pet: Pet): void {
-    const size = pet.config.size;
+    const size = PET_SIZE;
     context.beginPath();
     context.arc(0, size / 2, size / 2, 0, Math.PI * 2);
     context.fillStyle = 'rgba(200, 200, 200, 0.9)';
@@ -291,7 +396,7 @@
   }
 
   function drawPet(pet: Pet): void {
-    const size = pet.config.size;
+    const size = PET_SIZE;
     const spread = size * STRING_SPREAD_RATIO;
 
     context.save();
@@ -309,8 +414,8 @@
     context.stroke();
 
     context.translate(0, stringLengthOf(pet));
-    if (pet.imageLoaded) {
-      context.drawImage(pet.image, -size / 2, 0, size, size);
+    if (pet.sprite) {
+      context.drawImage(pet.sprite, -size / 2, 0, size, size);
     } else {
       drawPlaceholder(pet);
     }
@@ -341,7 +446,6 @@
   }
 
   function init(): void {
-    pets = CHARACTER_CONFIGS.map(createPet);
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     window.addEventListener('mousemove', onPointerMove);
@@ -352,6 +456,7 @@
       if (settings.clickThrough) {
         setIgnoreMouseEvents(true);
       }
+      syncPets();
       layoutPets();
     });
     requestAnimationFrame(render);

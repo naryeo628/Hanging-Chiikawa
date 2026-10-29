@@ -44,6 +44,20 @@
   input[type="range"] {
     flex: 1;
   }
+  .character-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .character-row label {
+    flex: 1;
+    min-width: 0;
+  }
+  .character-row .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   hr {
     border: none;
     border-top: 1px solid #e3dcd3;
@@ -100,10 +114,10 @@
 
   <section>
     <h2>캐릭터</h2>
-    <label><input type="checkbox" id="char-chiikawa" /> 치이카와</label>
-    <label><input type="checkbox" id="char-hachiware" /> 하치와레</label>
-    <label><input type="checkbox" id="char-usagi" /> 우사기</label>
-    <label><input type="checkbox" id="char-momonga" /> 모몽가</label>
+    <p class="status" id="characterEmpty">아직 캐릭터가 없어요. 아래 버튼으로 이미지를 추가해 주세요.</p>
+    <div id="characterList"></div>
+    <button id="addCharacter">이미지 추가…</button>
+    <p class="status">PNG · JPG · WEBP · GIF 지원. 흰 배경은 자동으로 투명하게 처리돼요.</p>
   </section>
 </div>
 <script src="dist/settings-renderer.js"></script>

@@ -6,7 +6,9 @@ import {
   nativeImage,
   screen,
   ipcMain,
+  dialog,
 } from 'electron';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -21,15 +23,36 @@ const DEFAULT_SETTINGS: AppSettings = {
   rowStartPercent: 10,
   rowSpacing: 80,
   stringLength: 60,
-  characters: {
-    chiikawa: true,
-    hachiware: true,
-    usagi: true,
-    momonga: true,
-  },
+  characters: [],
 };
 
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+const charactersDir = path.join(app.getPath('userData'), 'characters');
+
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
+
+function sanitizeCharacters(value: unknown): CharacterEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(
+    (entry): entry is CharacterEntry =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      typeof entry.id === 'string' &&
+      typeof entry.name === 'string' &&
+      typeof entry.visible === 'boolean' &&
+      typeof entry.file === 'string' &&
+      entry.file === path.basename(entry.file) &&
+      path.extname(entry.file).toLowerCase() in IMAGE_MIME,
+  );
+}
 
 function loadSettings(): AppSettings {
   try {
@@ -38,7 +61,7 @@ function loadSettings(): AppSettings {
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
-      characters: { ...DEFAULT_SETTINGS.characters, ...parsed.characters },
+      characters: sanitizeCharacters(parsed.characters),
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -80,7 +103,6 @@ function updateSettings(partial: Partial<AppSettings>): void {
   settings = {
     ...settings,
     ...partial,
-    characters: { ...settings.characters, ...(partial.characters ?? {}) },
   };
   settings.rowStartPercent = clampNumber(settings.rowStartPercent, 0, 90, DEFAULT_SETTINGS.rowStartPercent);
   settings.rowSpacing = clampNumber(settings.rowSpacing, 20, 300, DEFAULT_SETTINGS.rowSpacing);
@@ -255,7 +277,76 @@ ipcMain.on('update-settings', (_event, partial: unknown) => {
   if (typeof partial !== 'object' || partial === null) {
     return;
   }
-  updateSettings(partial as Partial<AppSettings>);
+  const { characters: _ignored, ...rest } = partial as Partial<AppSettings>;
+  updateSettings(rest);
+});
+
+ipcMain.handle('add-characters', async () => {
+  const options: Electron.OpenDialogOptions = {
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+  };
+  const result = settingsWindow
+    ? await dialog.showOpenDialog(settingsWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled) {
+    return;
+  }
+  fs.mkdirSync(charactersDir, { recursive: true });
+  const added: CharacterEntry[] = [];
+  for (const source of result.filePaths) {
+    const ext = path.extname(source).toLowerCase();
+    if (!(ext in IMAGE_MIME)) {
+      continue;
+    }
+    const id = crypto.randomUUID();
+    const file = id + ext;
+    try {
+      fs.copyFileSync(source, path.join(charactersDir, file));
+    } catch {
+      continue;
+    }
+    added.push({ id, name: path.basename(source, path.extname(source)), file, visible: true });
+  }
+  if (added.length > 0) {
+    updateSettings({ characters: [...settings.characters, ...added] });
+  }
+});
+
+ipcMain.on('remove-character', (_event, id: unknown) => {
+  const target = settings.characters.find((entry) => entry.id === id);
+  if (!target) {
+    return;
+  }
+  try {
+    fs.unlinkSync(path.join(charactersDir, target.file));
+  } catch {
+    // 파일이 이미 없어도 목록에서는 제거한다.
+  }
+  updateSettings({ characters: settings.characters.filter((entry) => entry.id !== id) });
+});
+
+ipcMain.on('set-character-visible', (_event, id: unknown, visible: unknown) => {
+  if (typeof visible !== 'boolean') {
+    return;
+  }
+  updateSettings({
+    characters: settings.characters.map((entry) => (entry.id === id ? { ...entry, visible } : entry)),
+  });
+});
+
+ipcMain.handle('get-character-image', (_event, id: unknown): string | null => {
+  const target = settings.characters.find((entry) => entry.id === id);
+  if (!target) {
+    return null;
+  }
+  try {
+    const data = fs.readFileSync(path.join(charactersDir, target.file));
+    const mime = IMAGE_MIME[path.extname(target.file).toLowerCase()];
+    return `data:${mime};base64,${data.toString('base64')}`;
+  } catch {
+    return null;
+  }
 });
 
 app.whenReady().then(() => {

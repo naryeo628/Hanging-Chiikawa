@@ -22,14 +22,41 @@
   const rowSpacingEl = byId<HTMLInputElement>('rowSpacing');
   const rowSpacingValueEl = byId<HTMLElement>('rowSpacingValue');
 
-  const characterEls: Record<CharacterId, HTMLInputElement> = {
-    chiikawa: byId<HTMLInputElement>('char-chiikawa'),
-    hachiware: byId<HTMLInputElement>('char-hachiware'),
-    usagi: byId<HTMLInputElement>('char-usagi'),
-    momonga: byId<HTMLInputElement>('char-momonga'),
-  };
+  const characterListEl = byId<HTMLElement>('characterList');
+  const characterEmptyEl = byId<HTMLElement>('characterEmpty');
+  const addCharacterEl = byId<HTMLButtonElement>('addCharacter');
 
   let applyingRemoteUpdate = false;
+
+  function renderCharacters(characters: CharacterEntry[]): void {
+    characterListEl.replaceChildren();
+    characterEmptyEl.style.display = characters.length === 0 ? '' : 'none';
+    for (const entry of characters) {
+      const row = document.createElement('div');
+      row.className = 'character-row';
+
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = entry.visible;
+      checkbox.addEventListener('change', () => {
+        window.settingsAPI.setCharacterVisible(entry.id, checkbox.checked);
+      });
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = entry.name;
+      label.append(checkbox, name);
+
+      const remove = document.createElement('button');
+      remove.textContent = '삭제';
+      remove.addEventListener('click', () => {
+        window.settingsAPI.removeCharacter(entry.id);
+      });
+
+      row.append(label, remove);
+      characterListEl.append(row);
+    }
+  }
 
   function applySettings(settings: AppSettings): void {
     applyingRemoteUpdate = true;
@@ -45,13 +72,11 @@
     stringLengthValueEl.textContent = String(settings.stringLength);
     rowSpacingEl.value = String(settings.rowSpacing);
     rowSpacingValueEl.textContent = String(settings.rowSpacing);
-    for (const id of Object.keys(characterEls) as CharacterId[]) {
-      characterEls[id].checked = settings.characters[id];
-    }
+    renderCharacters(settings.characters);
     applyingRemoteUpdate = false;
   }
 
-  function sendUpdate(partial: Partial<AppSettings>): void {
+  function sendUpdate(partial: Partial<Omit<AppSettings, 'characters'>>): void {
     if (applyingRemoteUpdate) {
       return;
     }
@@ -92,11 +117,9 @@
     rowSpacingValueEl.textContent = rowSpacingEl.value;
     sendUpdate({ rowSpacing: Number(rowSpacingEl.value) });
   });
-  for (const id of Object.keys(characterEls) as CharacterId[]) {
-    characterEls[id].addEventListener('change', () => {
-      sendUpdate({ characters: { [id]: characterEls[id].checked } as Record<CharacterId, boolean> });
-    });
-  }
+  addCharacterEl.addEventListener('click', () => {
+    window.settingsAPI.addCharacters();
+  });
 
   window.settingsAPI.onSettingsChanged(applySettings);
   window.settingsAPI.getSettings().then(applySettings);

@@ -23,7 +23,8 @@
       "dist/**/*",
       "index.html",
       "settings.html",
-      "assets/**/*"
+      "assets/**/*",
+      "!assets/characters/**/*"
     ],
     "directories": {
       "output": "release"

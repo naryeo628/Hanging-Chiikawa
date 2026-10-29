@@ -1,9 +1,8 @@
-type CharacterId = 'chiikawa' | 'hachiware' | 'usagi' | 'momonga';
-
-interface CharacterConfig {
-  id: CharacterId;
-  image: string;
-  size: number;
+interface CharacterEntry {
+  id: string;
+  name: string;
+  file: string;
+  visible: boolean;
 }
 
 type PinMode = 'desktop' | 'top';
@@ -17,17 +16,21 @@ interface AppSettings {
   rowStartPercent: number;
   rowSpacing: number;
   stringLength: number;
-  characters: Record<CharacterId, boolean>;
+  characters: CharacterEntry[];
 }
 
 interface PetAPI {
   setIgnoreMouseEvents(ignore: boolean): void;
   onSettingsChanged(callback: (settings: AppSettings) => void): void;
+  getCharacterImage(id: string): Promise<string | null>;
 }
 
 interface SettingsAPI {
   getSettings(): Promise<AppSettings>;
-  updateSettings(partial: Partial<AppSettings>): void;
+  updateSettings(partial: Partial<Omit<AppSettings, 'characters'>>): void;
+  addCharacters(): Promise<void>;
+  removeCharacter(id: string): void;
+  setCharacterVisible(id: string, visible: boolean): void;
   onSettingsChanged(callback: (settings: AppSettings) => void): void;
 }
 

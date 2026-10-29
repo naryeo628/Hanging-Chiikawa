@@ -12,6 +12,9 @@ const petAPI: PetAPI = {
       callback(settings);
     });
   },
+  getCharacterImage(id: string): Promise<string | null> {
+    return ipcRenderer.invoke('get-character-image', id);
+  },
 };
 
 contextBridge.exposeInMainWorld('petAPI', petAPI);
