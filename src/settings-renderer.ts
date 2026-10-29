@@ -31,7 +31,7 @@
   function renderCharacters(characters: CharacterEntry[]): void {
     characterListEl.replaceChildren();
     characterEmptyEl.style.display = characters.length === 0 ? '' : 'none';
-    for (const entry of characters) {
+    characters.forEach((entry, index) => {
       const row = document.createElement('div');
       row.className = 'character-row';
 
@@ -53,9 +53,23 @@
         window.settingsAPI.removeCharacter(entry.id);
       });
 
-      row.append(label, remove);
+      const up = document.createElement('button');
+      up.textContent = '↑';
+      up.disabled = index === 0;
+      up.addEventListener('click', () => {
+        window.settingsAPI.moveCharacter(entry.id, -1);
+      });
+
+      const down = document.createElement('button');
+      down.textContent = '↓';
+      down.disabled = index === characters.length - 1;
+      down.addEventListener('click', () => {
+        window.settingsAPI.moveCharacter(entry.id, 1);
+      });
+
+      row.append(label, up, down, remove);
       characterListEl.append(row);
-    }
+    });
   }
 
   function applySettings(settings: AppSettings): void {

@@ -30,6 +30,7 @@ interface SettingsAPI {
   updateSettings(partial: Partial<Omit<AppSettings, 'characters'>>): void;
   addCharacters(): Promise<void>;
   removeCharacter(id: string): void;
+  moveCharacter(id: string, offset: -1 | 1): void;
   setCharacterVisible(id: string, visible: boolean): void;
   onSettingsChanged(callback: (settings: AppSettings) => void): void;
 }

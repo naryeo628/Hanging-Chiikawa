@@ -174,7 +174,7 @@ function createSettingsWindow(): void {
 
   settingsWindow = new BrowserWindow({
     width: 380,
-    height: 560,
+    height: 720,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -324,6 +324,20 @@ ipcMain.on('remove-character', (_event, id: unknown) => {
     // 파일이 이미 없어도 목록에서는 제거한다.
   }
   updateSettings({ characters: settings.characters.filter((entry) => entry.id !== id) });
+});
+
+ipcMain.on('move-character', (_event, id: unknown, offset: unknown) => {
+  if (offset !== -1 && offset !== 1) {
+    return;
+  }
+  const from = settings.characters.findIndex((entry) => entry.id === id);
+  const to = from + offset;
+  if (from < 0 || to < 0 || to >= settings.characters.length) {
+    return;
+  }
+  const next = [...settings.characters];
+  [next[from], next[to]] = [next[to], next[from]];
+  updateSettings({ characters: next });
 });
 
 ipcMain.on('set-character-visible', (_event, id: unknown, visible: unknown) => {

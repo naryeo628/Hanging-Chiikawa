@@ -13,6 +13,9 @@ const settingsAPI: SettingsAPI = {
   removeCharacter(id: string): void {
     ipcRenderer.send('remove-character', id);
   },
+  moveCharacter(id: string, offset: -1 | 1): void {
+    ipcRenderer.send('move-character', id, offset);
+  },
   setCharacterVisible(id: string, visible: boolean): void {
     ipcRenderer.send('set-character-visible', id, visible);
   },
