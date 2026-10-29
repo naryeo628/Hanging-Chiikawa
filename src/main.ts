@@ -16,7 +16,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   dragEnabled: true,
   reactionsEnabled: true,
   autoWalkEnabled: true,
+  clickThrough: true,
   pinMode: process.env.PIN_MODE === 'top' ? 'top' : 'desktop',
+  rowStartPercent: 10,
+  rowSpacing: 80,
+  stringLength: 60,
   characters: {
     chiikawa: true,
     hachiware: true,
@@ -68,12 +72,19 @@ function broadcastSettings(): void {
   settingsWindow?.webContents.send('settings-changed', settings);
 }
 
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+}
+
 function updateSettings(partial: Partial<AppSettings>): void {
   settings = {
     ...settings,
     ...partial,
     characters: { ...settings.characters, ...(partial.characters ?? {}) },
   };
+  settings.rowStartPercent = clampNumber(settings.rowStartPercent, 0, 90, DEFAULT_SETTINGS.rowStartPercent);
+  settings.rowSpacing = clampNumber(settings.rowSpacing, 20, 300, DEFAULT_SETTINGS.rowSpacing);
+  settings.stringLength = clampNumber(settings.stringLength, 20, 300, DEFAULT_SETTINGS.stringLength);
   saveSettings(settings);
   applyWindowLevel();
   broadcastSettings();
@@ -121,6 +132,15 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  const fitWindowToDisplay = (): void => {
+    const { x: wx, y: wy, width: ww } = screen.getPrimaryDisplay().workArea;
+    mainWindow?.setBounds({ x: wx, y: wy, width: ww, height: windowHeight });
+  };
+  fitWindowToDisplay();
+  screen.on('display-metrics-changed', fitWindowToDisplay);
+  screen.on('display-added', fitWindowToDisplay);
+  screen.on('display-removed', fitWindowToDisplay);
 }
 
 function createSettingsWindow(): void {

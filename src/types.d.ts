@@ -3,9 +3,7 @@ type CharacterId = 'chiikawa' | 'hachiware' | 'usagi' | 'momonga';
 interface CharacterConfig {
   id: CharacterId;
   image: string;
-  perchXRatio: number;
   size: number;
-  reactionType: 'slip' | 'jump' | 'spin' | 'glide';
 }
 
 type PinMode = 'desktop' | 'top';
@@ -14,7 +12,11 @@ interface AppSettings {
   dragEnabled: boolean;
   reactionsEnabled: boolean;
   autoWalkEnabled: boolean;
+  clickThrough: boolean;
   pinMode: PinMode;
+  rowStartPercent: number;
+  rowSpacing: number;
+  stringLength: number;
   characters: Record<CharacterId, boolean>;
 }
 

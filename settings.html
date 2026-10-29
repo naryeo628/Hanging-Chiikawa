@@ -41,6 +41,9 @@
     width: 16px;
     height: 16px;
   }
+  input[type="range"] {
+    flex: 1;
+  }
   hr {
     border: none;
     border-top: 1px solid #e3dcd3;
@@ -76,15 +79,23 @@
 
   <section>
     <h2>동작</h2>
+    <label><input type="checkbox" id="clickThrough" /> 클릭은 뒤쪽 창으로 통과시키기 (마우스를 스치면 흔들림만 반응)</label>
     <label><input type="checkbox" id="dragEnabled" /> 마우스로 끌어서 옮기기</label>
     <label><input type="checkbox" id="reactionsEnabled" /> 클릭하면 반응하기</label>
-    <label><input type="checkbox" id="autoWalkEnabled" /> 가만히 있다가 자동으로 돌아다니기</label>
+    <label><input type="checkbox" id="autoWalkEnabled" /> 살랑살랑 계속 흔들리기</label>
   </section>
 
   <section>
     <h2>표시 위치</h2>
     <label><input type="radio" name="pinMode" id="pinModeDesktop" value="desktop" /> 바탕화면에서만 보이기</label>
     <label><input type="radio" name="pinMode" id="pinModeTop" value="top" /> 다른 창 위에서도 항상 보이기</label>
+  </section>
+
+  <section>
+    <h2>배치</h2>
+    <label>시작 위치 <input type="range" id="rowStartPercent" min="0" max="90" step="1" /> <span id="rowStartPercentValue"></span>%</label>
+    <label>줄 길이 <input type="range" id="stringLength" min="20" max="300" step="5" /> <span id="stringLengthValue"></span>px</label>
+    <label>캐릭터 간격 <input type="range" id="rowSpacing" min="20" max="300" step="5" /> <span id="rowSpacingValue"></span>px</label>
   </section>
 
   <section>

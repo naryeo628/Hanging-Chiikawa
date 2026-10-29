@@ -2,47 +2,45 @@
   'use strict';
 
   const CHARACTER_CONFIGS: CharacterConfig[] = [
-    { id: 'chiikawa', image: 'assets/characters/chiikawa.png', perchXRatio: 0.15, size: 140, reactionType: 'slip' },
-    { id: 'hachiware', image: 'assets/characters/hachiware.png', perchXRatio: 0.38, size: 140, reactionType: 'spin' },
-    { id: 'usagi', image: 'assets/characters/usagi.png', perchXRatio: 0.62, size: 140, reactionType: 'jump' },
-    { id: 'momonga', image: 'assets/characters/momonga.png', perchXRatio: 0.85, size: 120, reactionType: 'glide' },
+    { id: 'chiikawa', image: 'assets/characters/chiikawa.png', size: 50 },
+    { id: 'hachiware', image: 'assets/characters/hachiware.png', size: 50 },
+    { id: 'usagi', image: 'assets/characters/usagi.png', size: 50 },
+    { id: 'momonga', image: 'assets/characters/momonga.png', size: 50 },
   ];
 
-  const SPAWN_Y = 6;
   const AREA_SIDE_MARGIN = 30;
+
   const MAX_DT = 0.033;
   const CLICK_MAX_DURATION = 250;
   const CLICK_MAX_DISTANCE = 6;
 
-  const IDLE_SWAY_AMPLITUDE = 0.09;
-  const IDLE_SWAY_SPEED_MIN = 1.0;
-  const IDLE_SWAY_SPEED_MAX = 1.8;
+  const STRING_LENGTH_JITTER = 25;
+  const STRING_WIDTH = 2;
+  const STRING_COLOR = '#3b2a1e';
+  const STRING_SPREAD_RATIO = 0.28;
+  const STRING_OVERLAP_RATIO = 0.7;
 
-  const IDLE_DURATION_MIN = 1800;
-  const IDLE_DURATION_MAX = 4500;
-  const WALK_SPEED_MIN = 20;
-  const WALK_SPEED_MAX = 45;
-  const WALK_TARGET_PADDING = 40;
+  const SPRING_STIFFNESS = 30;
+  const DAMPING = 1.4;
+  const MAX_ANGLE = 1.2;
+  const MAX_VELOCITY = 7;
+  const BRUSH_IMPULSE = 0.12;
+  const BRUSH_REACH = 1.0;
+  const CLICK_IMPULSE = 5;
 
-  const SLIP_FALL_DURATION = 0.18;
-  const SLIP_CLIMB_DURATION = 0.5;
-  const SLIP_DROP_RATIO = 0.55;
-
-  const JUMP_UP_DURATION = 0.18;
-  const JUMP_DOWN_DURATION = 0.22;
-  const JUMP_HEIGHT_RATIO = 0.4;
-
-  const SPIN_DURATION = 0.45;
-
-  const GLIDE_DURATION = 0.9;
-  const GLIDE_DISTANCE = 140;
-  const GLIDE_RISE_RATIO = 0.25;
+  const IDLE_SWAY_AMPLITUDE = 0.04;
+  const IDLE_SWAY_SPEED_MIN = 0.8;
+  const IDLE_SWAY_SPEED_MAX = 1.4;
 
   const DEFAULT_SETTINGS: AppSettings = {
     dragEnabled: true,
     reactionsEnabled: true,
     autoWalkEnabled: true,
+    clickThrough: true,
     pinMode: 'desktop',
+    rowStartPercent: 10,
+    rowSpacing: 80,
+    stringLength: 60,
     characters: { chiikawa: true, hachiware: true, usagi: true, momonga: true },
   };
 
@@ -50,27 +48,13 @@
     config: CharacterConfig;
     image: HTMLImageElement;
     imageLoaded: boolean;
-    x: number;
-    y: number;
-    facing: 1 | -1;
-    walking: boolean;
-    dragging: boolean;
-    dragOffsetX: number;
-    dragOffsetY: number;
-    idleUntil: number;
-    targetX: number;
-    walkSpeed: number;
+    anchorX: number;
+    stringJitter: number;
+    angle: number;
+    velocity: number;
     swayPhase: number;
     swaySpeed: number;
-    swayAngle: number;
-    reactionActive: boolean;
-    reactionPhase: 1 | 2;
-    reactionT: number;
-    dropOffset: number;
-    spinAngle: number;
-    glideStartX: number;
-    glideDir: 1 | -1;
-    glideDistance: number;
+    dragging: boolean;
     pointerDownTime: number;
     pointerDownX: number;
     pointerDownY: number;
@@ -95,7 +79,6 @@
   let lastFrameTime = 0;
   let activeDragPet: Pet | null = null;
   let settings: AppSettings = DEFAULT_SETTINGS;
-  const startTime = performance.now();
 
   function randomRange(min: number, max: number): number {
     return min + Math.random() * (max - min);
@@ -103,18 +86,6 @@
 
   function clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
-  }
-
-  function easeOutQuad(t: number): number {
-    return 1 - (1 - t) * (1 - t);
-  }
-
-  function easeInQuad(t: number): number {
-    return t * t;
-  }
-
-  function easeInOutQuad(t: number): number {
-    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   }
 
   function setIgnoreMouseEvents(ignore: boolean): void {
@@ -125,62 +96,35 @@
     window.petAPI.setIgnoreMouseEvents(ignore);
   }
 
-  function areaBoundsX(size: number): { min: number; max: number } {
-    return {
-      min: AREA_SIDE_MARGIN + size / 2,
-      max: windowWidth - AREA_SIDE_MARGIN - size / 2,
-    };
-  }
-
-  function clampToWindow(pet: Pet): void {
-    const { min, max } = areaBoundsX(pet.config.size);
-    pet.x = clamp(pet.x, min, max);
-    pet.targetX = clamp(pet.targetX, min, max);
-    pet.y = clamp(pet.y, 0, windowHeight - pet.config.size);
-  }
-
-  function pickNewTarget(pet: Pet): void {
-    const { min, max } = areaBoundsX(pet.config.size);
-    pet.targetX = clamp(randomRange(min + WALK_TARGET_PADDING, max - WALK_TARGET_PADDING), min, max);
-    pet.walkSpeed = randomRange(WALK_SPEED_MIN, WALK_SPEED_MAX);
-  }
-
-  function goIdle(pet: Pet, elapsedMs: number): void {
-    pet.walking = false;
-    pet.idleUntil = elapsedMs + randomRange(IDLE_DURATION_MIN, IDLE_DURATION_MAX);
+  function updateMouseCapture(x: number, y: number): void {
+    setIgnoreMouseEvents(settings.clickThrough || findPetAt(x, y) === null);
   }
 
   function isVisible(pet: Pet): boolean {
     return settings.characters[pet.config.id];
   }
 
-  function createPet(config: CharacterConfig): Pet {
+  function anchorXFor(index: number): number {
+    const margin = AREA_SIDE_MARGIN + CHARACTER_CONFIGS[0].size / 2;
+    const gaps = Math.max(CHARACTER_CONFIGS.length - 1, 1);
+    const spacing = Math.min(settings.rowSpacing, Math.max((windowWidth - margin * 2) / gaps, 0));
+    const start = clamp(windowWidth * (settings.rowStartPercent / 100), margin, windowWidth - margin - spacing * gaps);
+    return start + index * spacing;
+  }
+
+  function createPet(config: CharacterConfig, index: number): Pet {
     const img = new Image();
     const pet: Pet = {
       config,
       image: img,
       imageLoaded: false,
-      x: windowWidth * config.perchXRatio,
-      y: SPAWN_Y,
-      facing: 1,
-      walking: false,
-      dragging: false,
-      dragOffsetX: 0,
-      dragOffsetY: 0,
-      idleUntil: 0,
-      targetX: windowWidth * config.perchXRatio,
-      walkSpeed: randomRange(WALK_SPEED_MIN, WALK_SPEED_MAX),
+      anchorX: anchorXFor(index),
+      stringJitter: randomRange(-STRING_LENGTH_JITTER, STRING_LENGTH_JITTER),
+      angle: 0,
+      velocity: 0,
       swayPhase: Math.random() * Math.PI * 2,
       swaySpeed: randomRange(IDLE_SWAY_SPEED_MIN, IDLE_SWAY_SPEED_MAX),
-      swayAngle: 0,
-      reactionActive: false,
-      reactionPhase: 1,
-      reactionT: 0,
-      dropOffset: 0,
-      spinAngle: 0,
-      glideStartX: 0,
-      glideDir: 1,
-      glideDistance: 0,
+      dragging: false,
       pointerDownTime: 0,
       pointerDownX: 0,
       pointerDownY: 0,
@@ -193,14 +137,13 @@
       pet.imageLoaded = false;
     };
     img.src = config.image;
-    goIdle(pet, performance.now() - startTime);
     return pet;
   }
 
   function layoutPets(): void {
-    for (const pet of pets) {
-      clampToWindow(pet);
-    }
+    pets.forEach((pet, index) => {
+      pet.anchorX = anchorXFor(index);
+    });
   }
 
   function resizeCanvas(): void {
@@ -215,36 +158,53 @@
     layoutPets();
   }
 
-  function hitTest(pet: Pet, x: number, y: number): boolean {
+  function stringLengthOf(pet: Pet): number {
+    return Math.max(settings.stringLength + pet.stringJitter, 10);
+  }
+
+  function petCenter(pet: Pet): { x: number; y: number } {
+    const distance = stringLengthOf(pet) + pet.config.size / 2;
+    return {
+      x: pet.anchorX - distance * Math.sin(pet.angle),
+      y: distance * Math.cos(pet.angle),
+    };
+  }
+
+  function hitTest(pet: Pet, x: number, y: number, reach: number): boolean {
     if (!isVisible(pet)) {
       return false;
     }
-    const half = pet.config.size / 2;
-    const centerX = pet.x;
-    const centerY = pet.y + pet.dropOffset + half;
-    const dx = x - centerX;
-    const dy = y - centerY;
-    return Math.sqrt(dx * dx + dy * dy) <= half;
+    const center = petCenter(pet);
+    const dx = x - center.x;
+    const dy = y - center.y;
+    return Math.sqrt(dx * dx + dy * dy) <= (pet.config.size / 2) * reach;
   }
 
   function findPetAt(x: number, y: number): Pet | null {
     for (let i = pets.length - 1; i >= 0; i--) {
-      if (hitTest(pets[i], x, y)) {
+      if (hitTest(pets[i], x, y, 1)) {
         return pets[i];
       }
     }
     return null;
   }
 
+  function addImpulse(pet: Pet, impulse: number): void {
+    pet.velocity = clamp(pet.velocity + impulse, -MAX_VELOCITY, MAX_VELOCITY);
+  }
+
+  function dragTo(pet: Pet, x: number, y: number): void {
+    const distance = stringLengthOf(pet) + pet.config.size / 2;
+    const dx = pet.anchorX - x;
+    const dy = Math.max(y, distance * 0.3);
+    pet.angle = clamp(Math.atan2(dx, dy), -MAX_ANGLE, MAX_ANGLE);
+    pet.velocity = 0;
+  }
+
   function onPointerMove(ev: MouseEvent): void {
     if (activeDragPet) {
       const pet = activeDragPet;
-      const newX = ev.clientX - pet.dragOffsetX;
-      const newY = ev.clientY - pet.dragOffsetY;
-      const { min, max } = areaBoundsX(pet.config.size);
-      pet.x = clamp(newX, min, max);
-      pet.y = clamp(newY, 0, windowHeight - pet.config.size);
-
+      dragTo(pet, ev.clientX, ev.clientY);
       const moveDx = ev.clientX - pet.pointerDownX;
       const moveDy = ev.clientY - pet.pointerDownY;
       if (Math.sqrt(moveDx * moveDx + moveDy * moveDy) > CLICK_MAX_DISTANCE) {
@@ -253,8 +213,13 @@
       return;
     }
 
-    const hovered = findPetAt(ev.clientX, ev.clientY) !== null;
-    setIgnoreMouseEvents(!hovered);
+    for (const pet of pets) {
+      if (hitTest(pet, ev.clientX, ev.clientY, BRUSH_REACH)) {
+        addImpulse(pet, ev.movementX * BRUSH_IMPULSE);
+      }
+    }
+
+    updateMouseCapture(ev.clientX, ev.clientY);
   }
 
   function onPointerDown(ev: MouseEvent): void {
@@ -269,25 +234,7 @@
 
     if (settings.dragEnabled) {
       pet.dragging = true;
-      pet.dragOffsetX = ev.clientX - pet.x;
-      pet.dragOffsetY = ev.clientY - pet.y;
       activeDragPet = pet;
-    }
-  }
-
-  function triggerReaction(pet: Pet): void {
-    pet.reactionActive = true;
-    pet.reactionPhase = 1;
-    pet.reactionT = 0;
-
-    if (pet.config.reactionType === 'glide') {
-      const { min, max } = areaBoundsX(pet.config.size);
-      const roomRight = max - pet.x;
-      const roomLeft = pet.x - min;
-      pet.glideDir = roomRight >= roomLeft ? 1 : -1;
-      pet.glideDistance = Math.min(GLIDE_DISTANCE, Math.max(roomRight, roomLeft));
-      pet.glideStartX = pet.x;
-      pet.facing = pet.glideDir;
     }
   }
 
@@ -297,10 +244,9 @@
     const moved = pet.pointerMoved || Math.sqrt(moveDx * moveDx + moveDy * moveDy) > CLICK_MAX_DISTANCE;
     const duration = performance.now() - pet.pointerDownTime;
 
-    if (!moved && duration <= CLICK_MAX_DURATION && !pet.reactionActive && settings.reactionsEnabled) {
-      triggerReaction(pet);
-    } else if (moved) {
-      goIdle(pet, performance.now() - startTime);
+    if (!moved && duration <= CLICK_MAX_DURATION && settings.reactionsEnabled) {
+      const center = petCenter(pet);
+      addImpulse(pet, ev.clientX >= center.x ? -CLICK_IMPULSE : CLICK_IMPULSE);
     }
   }
 
@@ -310,8 +256,7 @@
       activeDragPet = null;
       pet.dragging = false;
       finishPointer(pet, ev);
-      const stillHovered = findPetAt(ev.clientX, ev.clientY) !== null;
-      setIgnoreMouseEvents(!stillHovered);
+      updateMouseCapture(ev.clientX, ev.clientY);
       return;
     }
 
@@ -322,102 +267,15 @@
     finishPointer(pet, ev);
   }
 
-  function stepWalk(pet: Pet, dt: number, elapsedMs: number): void {
-    if (!settings.autoWalkEnabled) {
-      pet.walking = false;
-      pet.swayPhase += dt * pet.swaySpeed;
-      pet.swayAngle = Math.sin(pet.swayPhase) * IDLE_SWAY_AMPLITUDE;
-      return;
-    }
-
-    if (!pet.walking) {
-      pet.swayPhase += dt * pet.swaySpeed;
-      pet.swayAngle = Math.sin(pet.swayPhase) * IDLE_SWAY_AMPLITUDE;
-      if (elapsedMs >= pet.idleUntil) {
-        pickNewTarget(pet);
-        pet.walking = true;
-      }
-      return;
-    }
-
-    pet.swayAngle = 0;
-    const dx = pet.targetX - pet.x;
-    if (Math.abs(dx) < 2) {
-      goIdle(pet, elapsedMs);
-      return;
-    }
-    pet.facing = dx > 0 ? 1 : -1;
-    pet.x += pet.facing * pet.walkSpeed * dt;
-  }
-
-  function stepReaction(pet: Pet, dt: number, elapsedMs: number): void {
-    pet.dropOffset = 0;
-    pet.spinAngle = 0;
-    if (!pet.reactionActive) {
-      return;
-    }
-    pet.reactionT += dt;
-
-    if (pet.config.reactionType === 'slip') {
-      if (pet.reactionPhase === 1) {
-        const t = Math.min(pet.reactionT / SLIP_FALL_DURATION, 1);
-        pet.dropOffset = easeOutQuad(t) * pet.config.size * SLIP_DROP_RATIO;
-        if (t >= 1) {
-          pet.reactionPhase = 2;
-          pet.reactionT = 0;
-        }
-        return;
-      }
-      const t = Math.min(pet.reactionT / SLIP_CLIMB_DURATION, 1);
-      pet.dropOffset = (1 - easeInOutQuad(t)) * pet.config.size * SLIP_DROP_RATIO;
-      if (t >= 1) {
-        pet.reactionActive = false;
-        pet.dropOffset = 0;
-        goIdle(pet, elapsedMs);
-      }
-      return;
-    }
-
-    if (pet.config.reactionType === 'jump') {
-      if (pet.reactionPhase === 1) {
-        const t = Math.min(pet.reactionT / JUMP_UP_DURATION, 1);
-        pet.dropOffset = -easeOutQuad(t) * pet.config.size * JUMP_HEIGHT_RATIO;
-        if (t >= 1) {
-          pet.reactionPhase = 2;
-          pet.reactionT = 0;
-        }
-        return;
-      }
-      const t = Math.min(pet.reactionT / JUMP_DOWN_DURATION, 1);
-      pet.dropOffset = -(1 - easeInQuad(t)) * pet.config.size * JUMP_HEIGHT_RATIO;
-      if (t >= 1) {
-        pet.reactionActive = false;
-        pet.dropOffset = 0;
-        goIdle(pet, elapsedMs);
-      }
-      return;
-    }
-
-    if (pet.config.reactionType === 'spin') {
-      const t = Math.min(pet.reactionT / SPIN_DURATION, 1);
-      pet.spinAngle = easeInOutQuad(t) * Math.PI * 2;
-      if (t >= 1) {
-        pet.reactionActive = false;
-        pet.spinAngle = 0;
-        goIdle(pet, elapsedMs);
-      }
-      return;
-    }
-
-    const t = Math.min(pet.reactionT / GLIDE_DURATION, 1);
-    pet.x = pet.glideStartX + pet.glideDir * pet.glideDistance * easeInOutQuad(t);
-    pet.dropOffset = -Math.sin(t * Math.PI) * pet.config.size * GLIDE_RISE_RATIO;
-    if (t >= 1) {
-      pet.reactionActive = false;
-      pet.dropOffset = 0;
-      const { min, max } = areaBoundsX(pet.config.size);
-      pet.x = clamp(pet.x, min, max);
-      goIdle(pet, elapsedMs);
+  function stepSwing(pet: Pet, dt: number): void {
+    pet.swayPhase += dt * pet.swaySpeed;
+    const rest = settings.autoWalkEnabled ? Math.sin(pet.swayPhase) * IDLE_SWAY_AMPLITUDE : 0;
+    const acceleration = -SPRING_STIFFNESS * (pet.angle - rest) - DAMPING * pet.velocity;
+    pet.velocity += acceleration * dt;
+    pet.angle += pet.velocity * dt;
+    if (Math.abs(pet.angle) > MAX_ANGLE) {
+      pet.angle = clamp(pet.angle, -MAX_ANGLE, MAX_ANGLE);
+      pet.velocity = 0;
     }
   }
 
@@ -434,13 +292,23 @@
 
   function drawPet(pet: Pet): void {
     const size = pet.config.size;
-    const angle = pet.reactionActive && pet.config.reactionType === 'spin' ? pet.spinAngle : pet.swayAngle;
+    const spread = size * STRING_SPREAD_RATIO;
 
     context.save();
-    context.translate(pet.x, pet.y + pet.dropOffset);
-    context.rotate(angle);
-    context.scale(pet.facing, 1);
+    context.translate(pet.anchorX, 0);
+    context.rotate(pet.angle);
 
+    context.strokeStyle = STRING_COLOR;
+    context.lineWidth = STRING_WIDTH;
+    context.lineCap = 'round';
+    context.beginPath();
+    context.moveTo(-spread, 0);
+    context.lineTo(-spread, stringLengthOf(pet) + size * STRING_OVERLAP_RATIO);
+    context.moveTo(spread, 0);
+    context.lineTo(spread, stringLengthOf(pet) + size * STRING_OVERLAP_RATIO);
+    context.stroke();
+
+    context.translate(0, stringLengthOf(pet));
     if (pet.imageLoaded) {
       context.drawImage(pet.image, -size / 2, 0, size, size);
     } else {
@@ -456,7 +324,6 @@
     }
     const dt = Math.min((timestamp - lastFrameTime) / 1000, MAX_DT);
     lastFrameTime = timestamp;
-    const elapsedMs = timestamp - startTime;
 
     context.clearRect(0, 0, windowWidth, windowHeight);
 
@@ -464,14 +331,9 @@
       if (!isVisible(pet)) {
         continue;
       }
-      if (pet.dragging) {
-        drawPet(pet);
-        continue;
+      if (!pet.dragging) {
+        stepSwing(pet, dt);
       }
-      if (!pet.reactionActive) {
-        stepWalk(pet, dt, elapsedMs);
-      }
-      stepReaction(pet, dt, elapsedMs);
       drawPet(pet);
     }
 
@@ -487,6 +349,10 @@
     window.addEventListener('mouseup', onPointerUp);
     window.petAPI.onSettingsChanged((updated) => {
       settings = updated;
+      if (settings.clickThrough) {
+        setIgnoreMouseEvents(true);
+      }
+      layoutPets();
     });
     requestAnimationFrame(render);
   }
