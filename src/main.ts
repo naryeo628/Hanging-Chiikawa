@@ -86,6 +86,11 @@ function applyWindowLevel(): void {
   if (!mainWindow) {
     return;
   }
+  if (process.platform !== 'darwin') {
+    // 창 레벨 구분은 macOS에서만 동작하므로 다른 OS에서는 항상 위에 둔다.
+    mainWindow.setAlwaysOnTop(true);
+    return;
+  }
   const level = (settings.pinMode === 'top' ? 'floating' : 'desktop') as AlwaysOnTopLevel;
   mainWindow.setAlwaysOnTop(true, level);
 }
@@ -201,13 +206,12 @@ function createSettingsWindow(): void {
 }
 
 function buildTrayIcon(): Electron.NativeImage {
-  const iconPath = path.join(__dirname, '..', 'assets', 'trayTemplate.png');
-  if (fs.existsSync(iconPath)) {
-    const image = nativeImage.createFromPath(iconPath);
-    image.setTemplateImage(true);
-    return image;
+  // macOS는 🐾 글자로 표시하므로 이미지를 쓰지 않는다.
+  if (process.platform === 'darwin') {
+    return nativeImage.createEmpty();
   }
-  return nativeImage.createEmpty();
+  const iconPath = path.join(__dirname, '..', 'assets', 'trayIcon.png');
+  return fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
 }
 
 function buildTrayMenu(): Menu {
@@ -224,6 +228,7 @@ function buildTrayMenu(): Menu {
     { type: 'separator' },
     {
       label: pinLabel,
+      visible: process.platform === 'darwin',
       click: () => {
         updateSettings({ pinMode: settings.pinMode === 'top' ? 'desktop' : 'top' });
       },

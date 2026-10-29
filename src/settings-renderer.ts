@@ -13,6 +13,9 @@
   const dragEnabledEl = byId<HTMLInputElement>('dragEnabled');
   const reactionsEnabledEl = byId<HTMLInputElement>('reactionsEnabled');
   const autoWalkEnabledEl = byId<HTMLInputElement>('autoWalkEnabled');
+  const pinSectionEl = byId<HTMLElement>('pinSection');
+  // 표시 위치(창 레벨) 옵션은 macOS에서만 의미가 있다.
+  pinSectionEl.hidden = !navigator.userAgent.includes('Mac');
   const pinModeDesktopEl = byId<HTMLInputElement>('pinModeDesktop');
   const pinModeTopEl = byId<HTMLInputElement>('pinModeTop');
   const rowStartPercentEl = byId<HTMLInputElement>('rowStartPercent');
