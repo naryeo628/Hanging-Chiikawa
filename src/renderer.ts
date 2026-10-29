@@ -4,7 +4,7 @@
   const PET_SIZE = 50;
   const SPRITE_MAX_SIDE = 256;
   const BACKGROUND_WHITE_THRESHOLD = 235;
-  const BACKGROUND_ALPHA_THRESHOLD = 10;
+  const OPAQUE_ALPHA = 250;
 
   const AREA_SIDE_MARGIN = 30;
 
@@ -126,13 +126,19 @@
 
     const isBackground = (p: number): boolean => {
       const i = p * 4;
-      return (
-        px[i + 3] < BACKGROUND_ALPHA_THRESHOLD ||
-        (px[i] >= BACKGROUND_WHITE_THRESHOLD && px[i + 1] >= BACKGROUND_WHITE_THRESHOLD && px[i + 2] >= BACKGROUND_WHITE_THRESHOLD)
-      );
+      return px[i] >= BACKGROUND_WHITE_THRESHOLD && px[i + 1] >= BACKGROUND_WHITE_THRESHOLD && px[i + 2] >= BACKGROUND_WHITE_THRESHOLD;
     };
 
-    // 가장자리에서 이어진 흰색/투명 영역만 배경으로 보고 지운다(캐릭터 안쪽 흰색은 유지).
+    // 이미 투명한 부분이 있는 이미지는 배경 제거를 건너뛴다(몸통의 흰색까지 지워질 수 있음).
+    let hasTransparency = false;
+    for (let i = 3; i < px.length; i += 4) {
+      if (px[i] < OPAQUE_ALPHA) {
+        hasTransparency = true;
+        break;
+      }
+    }
+
+    // 불투명 이미지: 가장자리에서 이어진 흰색 영역만 배경으로 보고 지운다(캐릭터 안쪽 흰색은 유지).
     const visited = new Uint8Array(width * height);
     const stack: number[] = [];
     const visit = (x: number, y: number): void => {
@@ -146,11 +152,11 @@
       visited[p] = 1;
       stack.push(p);
     };
-    for (let x = 0; x < width; x++) {
+    for (let x = 0; x < width && !hasTransparency; x++) {
       visit(x, 0);
       visit(x, height - 1);
     }
-    for (let y = 0; y < height; y++) {
+    for (let y = 0; y < height && !hasTransparency; y++) {
       visit(0, y);
       visit(width - 1, y);
     }
